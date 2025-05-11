@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,6 +17,8 @@ interface ExpenseListControlsProps {
   filterText: string;
   onFilterTextChange: (value: string) => void;
 }
+
+const ALL_CATEGORIES_VALUE = "__ALL_CATEGORIES__"; // Special value for "All Categories" item
 
 export function ExpenseListControls({
   categories,
@@ -50,12 +53,21 @@ export function ExpenseListControls({
         <Label htmlFor="filter-category" className="sr-only">Filter by category</Label>
         <div className="flex items-center">
             <Filter className="h-5 w-5 mr-2 text-muted-foreground" />
-            <Select value={filterCategory} onValueChange={onFilterCategoryChange}>
+            <Select 
+              value={filterCategory === '' ? ALL_CATEGORIES_VALUE : filterCategory} 
+              onValueChange={(value) => {
+                if (value === ALL_CATEGORIES_VALUE) {
+                  onFilterCategoryChange('');
+                } else {
+                  onFilterCategoryChange(value);
+                }
+              }}
+            >
             <SelectTrigger id="filter-category" className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Filter by category..." />
             </SelectTrigger>
             <SelectContent>
-                <SelectItem value="">All Categories</SelectItem>
+                <SelectItem value={ALL_CATEGORIES_VALUE}>All Categories</SelectItem>
                 {categories.map(category => (
                 <SelectItem key={category} value={category}>{category}</SelectItem>
                 ))}
@@ -78,3 +90,4 @@ export function ExpenseListControls({
     </div>
   );
 }
+

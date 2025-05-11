@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from 'react-hook-form';
@@ -15,6 +16,7 @@ import { CalendarIcon } from 'lucide-react';
 import { ReceiptScannerButton } from './ReceiptScannerButton';
 import type { ScanReceiptOutput } from '@/ai/flows/scan-receipt';
 import { useEffect } from 'react';
+// import { useToast } from '@/hooks/use-toast'; // Uncomment if using toast for date scan issues
 
 interface ExpenseFormProps {
   onSubmit: (data: ExpenseFormData) => void;
@@ -26,6 +28,7 @@ interface ExpenseFormProps {
 const categories = ["Food", "Transport", "Utilities", "Entertainment", "Health", "Shopping", "Other"];
 
 export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps) {
+  // const { toast } = useToast(); // Uncomment if using toast for date scan issues
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(ExpenseSchema),
     defaultValues: initialData ? {
@@ -62,18 +65,46 @@ export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps
 
   const handleScanComplete = (scannedData: Partial<ScanReceiptOutput>) => {
     if (scannedData.date) {
-      try {
-        form.setValue('date', format(parseISO(scannedData.date), 'yyyy-MM-dd'));
-      } catch (e) {
-        // If date parsing fails, try to format it assuming it might be MM/DD/YYYY or other common formats.
-        // This is a simple fallback, more robust parsing might be needed.
+      const lowerScannedDate = scannedData.date.toLowerCase();
+      if (lowerScannedDate === 'unknown' || scannedData.date.trim() === '') {
+        console.info("Scanned date is 'unknown' or empty. Please enter manually.");
+        // Optionally, inform user to fill manually:
+        // toast({ title: "Date Scan Issue", description: "Date from receipt is unclear. Please enter manually."});
+      } else {
+        let dateToSet: string | undefined = undefined;
+        
+        // Try parsing with parseISO first (expects ISO 8601)
         try {
-           form.setValue('date', format(new Date(scannedData.date), 'yyyy-MM-dd'));
-        } catch (e2) {
-          console.error("Could not parse scanned date:", scannedData.date);
+          const parsed = parseISO(scannedData.date);
+          if (!isNaN(parsed.getTime())) { // Check if date is valid
+            dateToSet = format(parsed, 'yyyy-MM-dd');
+          }
+        } catch (e) {
+          // parseISO failed, will try new Date() next
+        }
+
+        // If parseISO failed or resulted in invalid date, try new Date() for more general formats
+        if (!dateToSet) {
+          try {
+            const parsed = new Date(scannedData.date);
+            if (!isNaN(parsed.getTime())) { // Check if date is valid
+              dateToSet = format(parsed, 'yyyy-MM-dd');
+            }
+          } catch (e2) {
+            // Both parsing attempts failed
+          }
+        }
+
+        if (dateToSet) {
+          form.setValue('date', dateToSet);
+        } else {
+          console.warn("Could not parse scanned date:", `"${scannedData.date}"`, ". Please enter manually.");
+          // Optionally, inform user via toast that the date couldn't be auto-filled
+          // toast({ title: "Date Scan Issue", description: "Could not automatically fill the date from receipt. Please check and enter manually."});
         }
       }
     }
+
     if (scannedData.amount) {
       form.setValue('amount', scannedData.amount);
     }

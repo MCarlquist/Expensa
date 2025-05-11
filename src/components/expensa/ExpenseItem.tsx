@@ -1,7 +1,7 @@
 "use client";
 
 import type { Expense } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Removed CardFooter as it's not used
 import { Button } from '@/components/ui/button';
 import { FilePenLine, Trash2, CalendarDays, Tag, Building } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -13,17 +13,24 @@ interface ExpenseItemProps {
 }
 
 export function ExpenseItem({ expense, onEdit, onDelete }: ExpenseItemProps) {
+  const displayOriginalAmount = expense.originalAmount && expense.originalCurrency && expense.originalCurrency.toUpperCase() !== 'SEK';
+
   return (
     <Card className="w-full shadow-lg rounded-xl overflow-hidden hover:shadow-xl transition-shadow duration-300">
       <CardHeader className="p-4 bg-secondary/30">
         <div className="flex justify-between items-start">
-            <div>
+            <div className="space-y-0.5">
                 <CardTitle className="text-xl font-semibold text-primary">
                 {expense.amount.toFixed(2)} Kr
                 </CardTitle>
+                {displayOriginalAmount && (
+                  <CardDescription className="text-xs text-muted-foreground italic">
+                    Original: {expense.originalAmount?.toFixed(2)} {expense.originalCurrency}
+                  </CardDescription>
+                )}
                 {expense.vendor && (
-                    <CardDescription className="text-sm text-muted-foreground flex items-center mt-1">
-                        <Building size={14} className="mr-1.5" /> {expense.vendor}
+                    <CardDescription className="text-sm text-muted-foreground flex items-center pt-0.5">
+                        <Building size={14} className="mr-1.5 flex-shrink-0" /> {expense.vendor}
                     </CardDescription>
                 )}
             </div>

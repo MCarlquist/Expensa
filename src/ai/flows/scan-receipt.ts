@@ -20,12 +20,21 @@ const ScanReceiptInputSchema = z.object({
 });
 export type ScanReceiptInput = z.infer<typeof ScanReceiptInputSchema>;
 
-const ScanReceiptOutputSchema = z.object({
+// This is the schema for the AI's direct output.
+const AIScanReceiptOutputSchema = z.object({
   date: z.string().describe('The date on the receipt.'),
   amount: z.number().describe('The total amount on the receipt.'),
   vendor: z.string().describe('The name of the vendor on the receipt.'),
+  currency: z.string().optional().describe('The currency code of the amount on the receipt (e.g., USD, EUR, SEK). If not clearly identifiable or if it is the local currency (SEK), this can be omitted or explicitly set to "SEK".'),
+});
+
+// This is the type for the data returned by the scanReceipt function, ensuring currency is always present.
+// Non-exported Zod schema, used internally by the flow.
+const ScanReceiptOutputSchema = AIScanReceiptOutputSchema.extend({
+    currency: z.string().describe('The currency code of the amount on the receipt (e.g., USD, EUR, SEK). Defaults to "SEK".')
 });
 export type ScanReceiptOutput = z.infer<typeof ScanReceiptOutputSchema>;
+
 
 export async function scanReceipt(input: ScanReceiptInput): Promise<ScanReceiptOutput> {
   return scanReceiptFlow(input);
@@ -34,18 +43,35 @@ export async function scanReceipt(input: ScanReceiptInput): Promise<ScanReceiptO
 const scanReceiptPrompt = ai.definePrompt({
   name: 'scanReceiptPrompt',
   input: {schema: ScanReceiptInputSchema},
-  output: {schema: ScanReceiptOutputSchema},
-  prompt: `You are an expert receipt scanner.  You will extract the date, amount, and vendor from the receipt.  Please provide the response in JSON format.\n\nReceipt: {{media url=photoDataUri}}`,
+  output: {schema: AIScanReceiptOutputSchema}, // AI outputs according to this schema (currency optional)
+  prompt: `You are an expert receipt scanner. Extract the date, total amount, vendor, and currency from the receipt.
+The currency should be its standard three-letter code (e.g., USD, EUR, SEK).
+If the currency is not clearly identifiable from the receipt, or if it appears to be in Swedish Kronor (SEK), you can omit the currency field or set it to "SEK".
+Please provide the response in JSON format.
+
+Receipt: {{media url=photoDataUri}}`,
 });
 
 const scanReceiptFlow = ai.defineFlow(
   {
     name: 'scanReceiptFlow',
     inputSchema: ScanReceiptInputSchema,
-    outputSchema: ScanReceiptOutputSchema,
+    outputSchema: ScanReceiptOutputSchema, // Flow guarantees this schema (currency non-optional)
   },
   async input => {
-    const {output} = await scanReceiptPrompt(input);
-    return output!;
+    const {output: aiOutput} = await scanReceiptPrompt(input);
+    
+    if (aiOutput === null || aiOutput === undefined) {
+        throw new Error("Receipt scanning failed to produce an output.");
+    }
+
+    // Ensure currency is always present, defaulting to SEK
+    const finalCurrency = aiOutput.currency?.trim().toUpperCase() || "SEK";
+    
+    return {
+        ...aiOutput,
+        currency: finalCurrency,
+    };
   }
 );
+

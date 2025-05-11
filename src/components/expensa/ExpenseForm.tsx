@@ -12,11 +12,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Loader2 } from 'lucide-react';
 import { ReceiptScannerButton } from './ReceiptScannerButton';
 import type { ScanReceiptOutput } from '@/ai/flows/scan-receipt';
-import { useEffect } from 'react';
-// import { useToast } from '@/hooks/use-toast'; // Uncomment if using toast for date scan issues
+import { convertCurrency } from '@/ai/flows/convert-currency-flow';
+import { useState, useEffect } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 interface ExpenseFormProps {
   onSubmit: (data: ExpenseFormData) => void;
@@ -28,19 +29,25 @@ interface ExpenseFormProps {
 const categories = ["Food", "Transport", "Utilities", "Entertainment", "Health", "Shopping", "Other"];
 
 export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps) {
-  // const { toast } = useToast(); // Uncomment if using toast for date scan issues
+  const { toast } = useToast();
+  const [isConverting, setIsConverting] = useState(false);
+
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(ExpenseSchema),
     defaultValues: initialData ? {
       ...initialData,
-      amount: initialData.amount || 0, // Ensure amount is number
+      amount: initialData.amount || 0,
       date: initialData.date ? format(parseISO(initialData.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+      originalAmount: initialData.originalAmount,
+      originalCurrency: initialData.originalCurrency,
     } : {
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       category: '',
       description: '',
       vendor: '',
+      originalAmount: undefined,
+      originalCurrency: undefined,
     },
   });
 
@@ -50,6 +57,8 @@ export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps
         ...initialData,
         amount: initialData.amount || 0,
         date: initialData.date ? format(parseISO(initialData.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+        originalAmount: initialData.originalAmount,
+        originalCurrency: initialData.originalCurrency,
       });
     } else {
        form.reset({
@@ -58,58 +67,84 @@ export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps
         category: '',
         description: '',
         vendor: '',
+        originalAmount: undefined,
+        originalCurrency: undefined,
       });
     }
   }, [initialData, form]);
 
 
-  const handleScanComplete = (scannedData: Partial<ScanReceiptOutput>) => {
+  const handleScanComplete = async (scannedData: Partial<ScanReceiptOutput>) => {
+    form.setValue('originalAmount', undefined);
+    form.setValue('originalCurrency', undefined);
+
     if (scannedData.date) {
       const lowerScannedDate = scannedData.date.toLowerCase();
       if (lowerScannedDate === 'unknown' || scannedData.date.trim() === '') {
         console.info("Scanned date is 'unknown' or empty. Please enter manually.");
-        // Optionally, inform user to fill manually:
-        // toast({ title: "Date Scan Issue", description: "Date from receipt is unclear. Please enter manually."});
       } else {
         let dateToSet: string | undefined = undefined;
-        
-        // Try parsing with parseISO first (expects ISO 8601)
         try {
           const parsed = parseISO(scannedData.date);
-          if (!isNaN(parsed.getTime())) { // Check if date is valid
+          if (!isNaN(parsed.getTime())) { 
             dateToSet = format(parsed, 'yyyy-MM-dd');
           }
         } catch (e) {
-          // parseISO failed, will try new Date() next
+          // Attempt next parse
         }
-
-        // If parseISO failed or resulted in invalid date, try new Date() for more general formats
         if (!dateToSet) {
           try {
             const parsed = new Date(scannedData.date);
-            if (!isNaN(parsed.getTime())) { // Check if date is valid
+            if (!isNaN(parsed.getTime())) {
               dateToSet = format(parsed, 'yyyy-MM-dd');
             }
           } catch (e2) {
-            // Both parsing attempts failed
+             // Both parsing attempts failed
           }
         }
-
         if (dateToSet) {
           form.setValue('date', dateToSet);
         } else {
           console.warn("Could not parse scanned date:", `"${scannedData.date}"`, ". Please enter manually.");
-          // Optionally, inform user via toast that the date couldn't be auto-filled
-          // toast({ title: "Date Scan Issue", description: "Could not automatically fill the date from receipt. Please check and enter manually."});
+          toast({ title: "Date Scan Issue", variant: "destructive", description: "Could not automatically fill the date from receipt. Please check and enter manually."});
         }
       }
     }
 
-    if (scannedData.amount) {
-      form.setValue('amount', scannedData.amount);
-    }
     if (scannedData.vendor) {
       form.setValue('vendor', scannedData.vendor);
+    }
+
+    const receiptCurrency = scannedData.currency?.toUpperCase() || "SEK";
+    const receiptAmount = scannedData.amount;
+
+    if (receiptAmount === undefined || receiptAmount === null || isNaN(receiptAmount)) {
+        toast({ variant: "destructive", title: "Scan Issue", description: "Could not read amount from receipt. Please enter manually."});
+        form.setValue('amount', 0);
+        return;
+    }
+    
+    if (receiptCurrency === "SEK") {
+      form.setValue('amount', receiptAmount);
+    } else {
+      form.setValue('originalAmount', receiptAmount);
+      form.setValue('originalCurrency', receiptCurrency);
+      setIsConverting(true);
+      try {
+        const conversionResult = await convertCurrency({
+          amount: receiptAmount,
+          fromCurrency: receiptCurrency,
+          toCurrency: "SEK",
+        });
+        form.setValue('amount', conversionResult.convertedAmount);
+        toast({ title: "Currency Converted", description: `${receiptAmount.toFixed(2)} ${receiptCurrency} converted to ${conversionResult.convertedAmount.toFixed(2)} SEK.` });
+      } catch (error) {
+        console.error("Error converting currency:", error);
+        toast({ variant: "destructive", title: "Conversion Failed", description: `Could not convert ${receiptCurrency} to SEK. Please enter SEK amount manually.` });
+        form.setValue('amount', 0); 
+      } finally {
+        setIsConverting(false);
+      }
     }
   };
 
@@ -128,10 +163,33 @@ export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps
           name="amount"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Amount</FormLabel>
+              <FormLabel>Amount (SEK)</FormLabel>
               <FormControl>
-                <Input type="number" placeholder="0.00 Kr" {...field} step="0.01" />
+                <div className="relative">
+                  <Input 
+                    type="number" 
+                    placeholder="0.00" 
+                    {...field} 
+                    step="0.01" 
+                    disabled={isConverting}
+                    value={field.value === undefined || field.value === null || isNaN(field.value) ? '' : field.value}
+                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                  />
+                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                     <span className="text-muted-foreground sm:text-sm">Kr</span>
+                   </div>
+                  {isConverting && (
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    </div>
+                  )}
+                </div>
               </FormControl>
+              {form.watch('originalAmount') && form.watch('originalCurrency') && form.watch('originalCurrency')?.toUpperCase() !== 'SEK' && (
+                <p className="text-xs text-muted-foreground pt-1">
+                  Original: {form.watch('originalAmount')?.toFixed(2)} {form.watch('originalCurrency')}
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
@@ -222,9 +280,10 @@ export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps
         />
 
         <div className="flex justify-end space-x-2 pt-4">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="default">
-            {initialData ? 'Save Changes' : 'Add Expense'}
+          <Button type="button" variant="outline" onClick={onClose} disabled={isConverting}>Cancel</Button>
+          <Button type="submit" variant="default" disabled={isConverting}>
+            {isConverting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isConverting ? 'Processing...' : (initialData ? 'Save Changes' : 'Add Expense')}
           </Button>
         </div>
       </form>

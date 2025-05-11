@@ -130,7 +130,7 @@ export function ExpenseForm({ onSubmit, initialData, onClose }: ExpenseFormProps
             <FormItem>
               <FormLabel>Amount</FormLabel>
               <FormControl>
-                <Input type="number" placeholder="0.00" {...field} step="0.01" />
+                <Input type="number" placeholder="0.00 Kr" {...field} step="0.01" />
               </FormControl>
               <FormMessage />
             </FormItem>

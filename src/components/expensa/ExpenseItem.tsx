@@ -19,7 +19,7 @@ export function ExpenseItem({ expense, onEdit, onDelete }: ExpenseItemProps) {
         <div className="flex justify-between items-start">
             <div>
                 <CardTitle className="text-xl font-semibold text-primary">
-                ${expense.amount.toFixed(2)}
+                {expense.amount.toFixed(2)} Kr
                 </CardTitle>
                 {expense.vendor && (
                     <CardDescription className="text-sm text-muted-foreground flex items-center mt-1">

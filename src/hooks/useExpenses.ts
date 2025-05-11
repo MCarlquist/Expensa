@@ -3,6 +3,7 @@
 import type { Expense, ExpenseFormData } from '@/lib/types';
 import { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
+import { convertCurrency } from '@/ai/flows/convert-currency-flow';
 
 const STORAGE_KEY = 'expensa-expenses';
 
@@ -37,17 +38,33 @@ export function useExpenses() {
     }
   }, [expenses, isLoaded]);
 
-  const addExpense = useCallback((expenseData: ExpenseFormData) => {
-    const newExpense: Expense = { ...expenseData, id: uuidv4() };
-    setExpenses(prevExpenses => [newExpense, ...prevExpenses]);
-  }, []);
+  const addExpense = useCallback(async (expenseData: ExpenseFormData) => {
+    let processedExpenseData = { ...expenseData };
 
-  const updateExpense = useCallback((id: string, updatedData: ExpenseFormData) => {
-    setExpenses(prevExpenses =>
-      prevExpenses.map(expense =>
-        expense.id === id ? { ...expense, ...updatedData } : expense
-      )
-    );
+    if (processedExpenseData.currency && processedExpenseData.currency !== 'SEK') {
+      try {
+        const { convertedAmount } = await convertCurrency({
+          amount: processedExpenseData.amount,
+          fromCurrency: processedExpenseData.currency,
+          toCurrency: 'SEK',
+        });
+        processedExpenseData.amount = convertedAmount;
+        processedExpenseData.currency = 'SEK'; // Set currency to SEK after conversion
+      } catch (error) {
+        console.error('Failed to convert currency:', error);
+        // Optionally handle the error, e.g., show a toast message
+      }
+    }
+
+    const newExpense: Expense = { ...processedExpenseData, id: uuidv4() };
+    setExpenses(prevExpenses => [newExpense, ...prevExpenses]);
+  }, [setExpenses]);
+
+  const updateExpense = useCallback(async (id: string, updatedData: ExpenseFormData) => {
+    // Currency conversion is currently only applied during addExpense.
+    // If you need to support currency conversion during update,
+    // similar logic to addExpense would be required here.
+    setExpenses(prevExpenses => prevExpenses.map(expense => expense.id === id ? { ...expense, ...updatedData } : expense));
   }, []);
 
   const deleteExpense = useCallback((id: string) => {

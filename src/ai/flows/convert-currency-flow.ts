@@ -33,8 +33,9 @@ const convertCurrencyPrompt = ai.definePrompt({
   name: 'convertCurrencyPrompt',
   input: {schema: ConvertCurrencyInputSchema},
   output: {schema: ConvertCurrencyOutputSchema},
-  prompt: `You are an expert currency converter. Convert {amount} {fromCurrency} to {toCurrency}.
-Use current approximate exchange rates.
+  prompt: `You are an expert currency converter. Convert {amount} {fromCurrency} to {toCurrency} using reliable and up-to-date exchange rates.
+Utilize data from a reliable financial data provider or API to ensure accuracy in the conversion.
+
 Provide only the numerical converted amount as a float (e.g., 105.32), without any currency symbols, thousand separators, or additional text.
 If {fromCurrency} is already {toCurrency}, return {amount}.`,
   config: {
